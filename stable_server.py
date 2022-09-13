@@ -6,8 +6,10 @@ sys.path.append(".")
 
 from generation_manager import Generator
 from flask import Flask, request, send_file
+from flask_localtunnel import run_with_lt
 
 app = Flask(__name__)
+run_with_lt(app)
 
 @app.route("/img2img", methods=['POST'])
 def img2img():
