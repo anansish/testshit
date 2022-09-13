@@ -1,6 +1,7 @@
 from PyQt5.QtGui import QImage
 import os, io
 import random
+import threading
 import argparse, os, sys, glob
 sys.path.append(".")
 
@@ -21,12 +22,13 @@ def img2img():
             flags['seed']=random.randint(0,100000)
     else:
         flags['seed'] = random.randint(0, 100000)
-    image, _ = generator.img2img(flags, image)
-    image.show()
-    img_byte_arr = io.BytesIO()
-    image.save(img_byte_arr, format='PNG')
-    img_byte_arr.seek(0)
-    return send_file(img_byte_arr,"image/png")
+    generation_thread=threading.Thread(target=generator.img2img, args=(flags, image,))
+    generation_thread.start()
+    #image, _ = generator.img2img(flags, image)
+    #img_byte_arr = io.BytesIO()
+    #image.save(img_byte_arr, format='PNG')
+    #img_byte_arr.seek(0)
+    return "OK" #send_file(img_byte_arr,"image/png")
 
 @app.route("/inpaint", methods=['POST'])
 def img2imgInpainting():
