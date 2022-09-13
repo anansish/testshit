@@ -23,6 +23,7 @@ from ldm.models.diffusion.ddim import DDIMSampler
 from ldm.models.diffusion.plms import PLMSSampler
 
 class Generator():
+    current_generation_info={}
     generation_lock = threading.Lock()
     default_flags={'outdir':'outputs/txt2img-samples',
                'config':'configs/stable-diffusion/v1-inference.yaml',
@@ -218,13 +219,25 @@ class Generator():
             return neww, newh, 1
         return w, h, 0
 
-    def get_progress(self):
-        image, progress = self.sampler.progress()
-        x_samples_ddim = self.model.decode_first_stage(image)
-        x_sample = torch.clamp((x_samples_ddim + 1.0) / 2.0, min=0.0, max=1.0)[0]
+    def get_progress(self, visual):
+        result, progress = self.sampler.progress()
+        if progress==0:
+            return None, progress
+        if visual or progress==100:
+            x_samples_ddim = self.model.decode_first_stage(result)
+            x_sample = torch.clamp((x_samples_ddim + 1.0) / 2.0, min=0.0, max=1.0)[0]
 
-        x_sample = 255. * rearrange(x_sample.cpu().numpy(), 'c h w -> h w c')
-        result = Image.fromarray(x_sample.astype(np.uint8))
+            x_sample = 255. * rearrange(x_sample.cpu().numpy(), 'c h w -> h w c')
+            result = Image.fromarray(x_sample.astype(np.uint8))
+            if self.current_generation_info['tooBig'] < 0:
+                result = result.resize((self.current_generation_info['w'], self.current_generation_info['h']), Image.LANCZOS)
+        if visual and self.current_generation_info['tooBig'] > 0 and progress < 100:
+            result = result.resize((self.current_generation_info['w'], self.current_generation_info['h']), Image.LANCZOS)
+        if progress==100:
+            if self.current_generation_info['tooBig'] > 0:
+                result = self.processRealESRGAN(result).resize((self.current_generation_info['w'], self.current_generation_info['h']), Image.LANCZOS)
+            if self.current_generation_info['mode']=='inpaint':
+                result = Image.composite(self.current_generation_info['orig_image'], result, self.current_generation_info['orig_image'].getchannel("A"))
 
         return result, progress
 
@@ -241,6 +254,8 @@ class Generator():
         data = [[prompt]]
 
         orig_image, init_image, mask, (init_width, init_height), tooBig = self.load_img_with_alpha_mask(image_data)
+
+        self.current_generation_info={'w':int(flags['w']),'h':int(flags['h']),'tooBig':tooBig,"mode":'inpaint', 'orig_image':orig_image}
 
         init_image = init_image.to(self.device)
         mask = torch.from_numpy(mask).to(self.device)
@@ -276,21 +291,21 @@ class Generator():
                         # decode it
                         samples = self.sampler.decode(z_enc, c, t_enc, unconditional_guidance_scale=float(final_flags['scale']),
                                                 unconditional_conditioning=uc, z_mask=mask, x0=init_latent)
-
+                        '''
                         x_samples_ddim = self.model.decode_first_stage(samples)
                         x_sample = torch.clamp((x_samples_ddim + 1.0) / 2.0, min=0.0, max=1.0)[0]
 
                         x_sample = 255. * rearrange(x_sample.cpu().numpy(), 'c h w -> h w c')
                         result=Image.fromarray(x_sample.astype(np.uint8))
 
-
                         if tooBig < 0:
                             result = result.resize((init_width, init_height), Image.LANCZOS)
                         if tooBig > 0:
                             result = self.processRealESRGAN(result).resize((init_width, init_height), Image.LANCZOS)
                         result = Image.composite(orig_image,result, orig_image.getchannel("A"))
+                        '''
                         self.generation_lock.release()
-                        return result, final_flags
+                        return final_flags #result, final_flags
 
     def img2img(self, flags, image_data):
         self.generation_lock.acquire()
@@ -305,6 +320,9 @@ class Generator():
         data = [[prompt]]
 
         init_image, (init_width, init_height), tooBig = self.load_img(image_data)
+
+        self.current_generation_info={'w':int(flags['w']),'h':int(flags['h']),'tooBig':tooBig,"mode":'img2img'}
+
         init_image = init_image.to(self.device)
 
         init_image = repeat(init_image, '1 ... -> b ...', b=1)
@@ -334,7 +352,7 @@ class Generator():
                         # decode it
                         samples = self.sampler.decode(z_enc, c, t_enc, unconditional_guidance_scale=float(final_flags['scale']),
                                                 unconditional_conditioning=uc,)
-
+                        '''
                         x_samples_ddim = self.model.decode_first_stage(samples)
                         x_sample = torch.clamp((x_samples_ddim + 1.0) / 2.0, min=0.0, max=1.0)[0]
 
@@ -345,9 +363,9 @@ class Generator():
                             result = result.resize((init_width, init_height), Image.LANCZOS)
                         if tooBig > 0:
                             result = self.processRealESRGAN(result).resize((init_width, init_height), Image.LANCZOS)
-
+                        '''
                         self.generation_lock.release()
-                        return result, final_flags
+                        return final_flags #result, final_flags
 
 
     def generate(self, flags):
@@ -357,9 +375,7 @@ class Generator():
         final_flags.update(flags)
 
         width, height, tooBig = self.check_and_resize(int(final_flags['w']), int(final_flags['h']))
-
-        print(width)
-        print(height)
+        self.current_generation_info={'w':int(flags['w']),'h':int(flags['h']),'tooBig':tooBig,"mode":'txt2img'}
 
         seed_everything(int(final_flags['seed']))
 
@@ -393,7 +409,7 @@ class Generator():
                                                         unconditional_conditioning=uc,
                                                         eta=float(final_flags['ddim_eta']),
                                                         x_T=None)
-
+                        '''
                         x_samples_ddim = self.model.decode_first_stage(samples_ddim)
                         x_sample = torch.clamp((x_samples_ddim + 1.0) / 2.0, min=0.0, max=1.0)[0]
 
@@ -405,6 +421,6 @@ class Generator():
 
                         if tooBig>0:
                             result = self.processRealESRGAN(result).resize((int(final_flags['w']), int(final_flags['h'])), Image.LANCZOS)
-
+                        '''
                         self.generation_lock.release()
-                        return result, final_flags
+                        return final_flags #result, final_flags

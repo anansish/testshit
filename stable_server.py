@@ -7,10 +7,10 @@ sys.path.append(".")
 
 from generation_manager import Generator
 from flask import Flask, request, send_file, make_response
-from flask_lt import run_with_lt
+#from flask_lt import run_with_lt
 
 app = Flask(__name__)
-run_with_lt(app)
+#run_with_lt(app)
 
 @app.route("/img2img", methods=['POST'])
 def img2img():
@@ -24,11 +24,7 @@ def img2img():
         flags['seed'] = random.randint(0, 100000)
     generation_thread=threading.Thread(target=generator.img2img, args=(flags, image,))
     generation_thread.start()
-    #image, _ = generator.img2img(flags, image)
-    #img_byte_arr = io.BytesIO()
-    #image.save(img_byte_arr, format='PNG')
-    #img_byte_arr.seek(0)
-    return "OK" #send_file(img_byte_arr,"image/png")
+    return "OK"
 
 @app.route("/inpaint", methods=['POST'])
 def img2imgInpainting():
@@ -40,21 +36,27 @@ def img2imgInpainting():
             flags['seed']=random.randint(0,100000)
     else:
         flags['seed'] = random.randint(0, 100000)
-    image, _ = generator.img2imgInpainting(flags, image)
-    image.show()
-    img_byte_arr = io.BytesIO()
-    image.save(img_byte_arr, format='PNG')
-    img_byte_arr.seek(0)
-    return send_file(img_byte_arr,"image/png")
+    generation_thread = threading.Thread(target=generator.img2imgInpainting, args=(flags, image,))
+    generation_thread.start()
+    return "OK"
 
 @app.route("/progress")
 def progress():
-    image, progress = generator.get_progress()
-    img_byte_arr = io.BytesIO()
-    image.save(img_byte_arr, format='PNG')
-    img_byte_arr.seek(0)
-    response=make_response(send_file(img_byte_arr,"image/png"))
-    response.headers['X-Progress'] = progress
+    args=request.args.to_dict()
+    visual=False
+    if 'visual' in args.keys():
+        visual=args['visual']=='True'
+    image, progress = generator.get_progress(visual)
+    response=None
+    if progress==0 or not visual:
+        response=make_response()
+        response.headers['X-Progress'] = progress
+    if (visual or progress==100) and (progress > 0):
+        img_byte_arr = io.BytesIO()
+        image.save(img_byte_arr, format='PNG')
+        img_byte_arr.seek(0)
+        response=make_response(send_file(img_byte_arr,"image/png"))
+        response.headers['X-Progress'] = progress
     return response
 
 @app.route("/txt2img")
@@ -65,11 +67,9 @@ def txt2img():
             flags['seed']=random.randint(0,100000)
     else:
         flags['seed'] = random.randint(0, 100000)
-    image, _ = generator.generate(flags)
-    img_byte_arr = io.BytesIO()
-    image.save(img_byte_arr, format='PNG')
-    img_byte_arr.seek(0)
-    return send_file(img_byte_arr,"image/png")
+    generation_thread = threading.Thread(target=generator.generate, args=(flags,))
+    generation_thread.start()
+    return "OK"
 
 generator=Generator()
 generator.load_model()
