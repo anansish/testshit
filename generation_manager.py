@@ -218,6 +218,9 @@ class Generator():
             return neww, newh, 1
         return w, h, 0
 
+    def get_progress(self):
+        return self.sampler.progress()
+
     def img2imgInpainting(self, flags, image_data):
         self.generation_lock.acquire()
         self.sampler = DDIMSampler(self.model)

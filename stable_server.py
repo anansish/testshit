@@ -5,7 +5,7 @@ import argparse, os, sys, glob
 sys.path.append(".")
 
 from generation_manager import Generator
-from flask import Flask, request, send_file
+from flask import Flask, request, send_file, make_response
 from flask_lt import run_with_lt
 
 app = Flask(__name__)
@@ -44,6 +44,16 @@ def img2imgInpainting():
     image.save(img_byte_arr, format='PNG')
     img_byte_arr.seek(0)
     return send_file(img_byte_arr,"image/png")
+
+@app.route("/progress")
+def progress():
+    image, progress = generator.get_progress()
+    img_byte_arr = io.BytesIO()
+    image.save(img_byte_arr, format='PNG')
+    img_byte_arr.seek(0)
+    response=make_response(send_file(img_byte_arr,"image/png"))
+    response.headers['X-Progress'] = progress
+    return response
 
 @app.route("/txt2img")
 def txt2img():
