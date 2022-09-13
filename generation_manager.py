@@ -219,7 +219,14 @@ class Generator():
         return w, h, 0
 
     def get_progress(self):
-        return self.sampler.progress()
+        image, progress = self.sampler.progress()
+        x_samples_ddim = self.model.decode_first_stage(image)
+        x_sample = torch.clamp((x_samples_ddim + 1.0) / 2.0, min=0.0, max=1.0)[0]
+
+        x_sample = 255. * rearrange(x_sample.cpu().numpy(), 'c h w -> h w c')
+        result = Image.fromarray(x_sample.astype(np.uint8))
+
+        return result, progress
 
     def img2imgInpainting(self, flags, image_data):
         self.generation_lock.acquire()
