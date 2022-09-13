@@ -290,57 +290,56 @@ class Generator():
         final_flags=self.default_flags.copy()
         final_flags.update(flags)
 
-        with isolate_rng():
-            seed_everything(int(final_flags['seed']))
-            batch_size=1
-            prompt = final_flags['prompt']
-            assert prompt is not None
-            data = [[prompt]]
+        seed_everything(int(final_flags['seed']))
+        batch_size=1
+        prompt = final_flags['prompt']
+        assert prompt is not None
+        data = [[prompt]]
 
-            init_image, (init_width, init_height), tooBig = self.load_img(image_data)
-            init_image = init_image.to(self.device)
+        init_image, (init_width, init_height), tooBig = self.load_img(image_data)
+        init_image = init_image.to(self.device)
 
-            init_image = repeat(init_image, '1 ... -> b ...', b=1)
-            init_latent = self.model.get_first_stage_encoding(self.model.encode_first_stage(init_image))  # move to latent space
+        init_image = repeat(init_image, '1 ... -> b ...', b=1)
+        init_latent = self.model.get_first_stage_encoding(self.model.encode_first_stage(init_image))  # move to latent space
 
-            self.sampler.make_schedule(ddim_num_steps=int(final_flags['ddim_steps']), ddim_eta=final_flags['ddim_eta'], verbose=False)
+        self.sampler.make_schedule(ddim_num_steps=int(final_flags['ddim_steps']), ddim_eta=final_flags['ddim_eta'], verbose=False)
 
-            assert 0. <= float(final_flags['strength']) <= 1., 'can only work with strength in [0.0, 1.0]'
-            t_enc = int(float(final_flags['strength']) * int(final_flags['ddim_steps']))
-            print(f"target t_enc is {t_enc} steps")
+        assert 0. <= float(final_flags['strength']) <= 1., 'can only work with strength in [0.0, 1.0]'
+        t_enc = int(float(final_flags['strength']) * int(final_flags['ddim_steps']))
+        print(f"target t_enc is {t_enc} steps")
 
-            precision_scope = autocast if final_flags['precision'] == "autocast" else nullcontext
-            with torch.no_grad():
-                with precision_scope("cuda"):
-                    with self.model.ema_scope():
-                        tic = time.time()
-                        for prompts in tqdm(data, desc="data"):
-                            uc = None
-                            if float(final_flags['scale']) != 1.0:
-                                uc = self.model.get_learned_conditioning(batch_size * [""])
-                            if isinstance(prompts, tuple):
-                                prompts = list(prompts)
-                            c = self.model.get_learned_conditioning(prompts)
+        precision_scope = autocast if final_flags['precision'] == "autocast" else nullcontext
+        with torch.no_grad():
+            with precision_scope("cuda"):
+                with self.model.ema_scope():
+                    tic = time.time()
+                    for prompts in tqdm(data, desc="data"):
+                        uc = None
+                        if float(final_flags['scale']) != 1.0:
+                            uc = self.model.get_learned_conditioning(batch_size * [""])
+                        if isinstance(prompts, tuple):
+                            prompts = list(prompts)
+                        c = self.model.get_learned_conditioning(prompts)
 
-                            # encode (scaled latent)
-                            z_enc = self.sampler.stochastic_encode(init_latent, torch.tensor([t_enc]*batch_size).to(self.device))
-                            # decode it
-                            samples = self.sampler.decode(z_enc, c, t_enc, unconditional_guidance_scale=float(final_flags['scale']),
-                                                    unconditional_conditioning=uc,)
+                        # encode (scaled latent)
+                        z_enc = self.sampler.stochastic_encode(init_latent, torch.tensor([t_enc]*batch_size).to(self.device))
+                        # decode it
+                        samples = self.sampler.decode(z_enc, c, t_enc, unconditional_guidance_scale=float(final_flags['scale']),
+                                                unconditional_conditioning=uc,)
 
-                            x_samples_ddim = self.model.decode_first_stage(samples)
-                            x_sample = torch.clamp((x_samples_ddim + 1.0) / 2.0, min=0.0, max=1.0)[0]
+                        x_samples_ddim = self.model.decode_first_stage(samples)
+                        x_sample = torch.clamp((x_samples_ddim + 1.0) / 2.0, min=0.0, max=1.0)[0]
 
-                            x_sample = 255. * rearrange(x_sample.cpu().numpy(), 'c h w -> h w c')
-                            result=Image.fromarray(x_sample.astype(np.uint8))
+                        x_sample = 255. * rearrange(x_sample.cpu().numpy(), 'c h w -> h w c')
+                        result=Image.fromarray(x_sample.astype(np.uint8))
 
-                            if tooBig < 0:
-                                result = result.resize((init_width, init_height), Image.LANCZOS)
-                            if tooBig > 0:
-                                result = self.processRealESRGAN(result).resize((init_width, init_height), Image.LANCZOS)
+                        if tooBig < 0:
+                            result = result.resize((init_width, init_height), Image.LANCZOS)
+                        if tooBig > 0:
+                            result = self.processRealESRGAN(result).resize((init_width, init_height), Image.LANCZOS)
 
-                            self.generation_lock.release()
-                            return result, final_flags
+                        self.generation_lock.release()
+                        return result, final_flags
 
 
     def generate(self, flags):
@@ -354,51 +353,50 @@ class Generator():
         print(width)
         print(height)
 
-        with isolate_rng():
-            seed_everything(int(final_flags['seed']))
+        seed_everything(int(final_flags['seed']))
 
-            batch_size = 1
+        batch_size = 1
 
-            prompts = final_flags['prompt']
-            assert prompts is not None
+        prompts = final_flags['prompt']
+        assert prompts is not None
 
-            precision_scope = autocast if final_flags['precision']=="autocast" else nullcontext
-            with torch.no_grad():
-                with precision_scope("cuda"):
-                    with self.model.ema_scope():
-                        tic = time.time()
-                        for n in trange(1, desc="Sampling"):
-                            uc = self.model.get_learned_conditioning(batch_size * ["oil painting"])
-                            if float(final_flags['scale']) != 1.0:
-                                uc = self.model.get_learned_conditioning(batch_size * [""])
-                            #if isinstance(prompts, tuple):
-                            #    prompts = list(prompts)
-                            c = torch.zeros_like(uc)
-                            for p in self.parse_prompt(prompts):
-                                c = torch.add(c, self.model.get_learned_conditioning(p[0]), alpha=p[1])
-                            #c = self.model.get_learned_conditioning(prompts)
-                            shape = [int(final_flags['c']), height // int(final_flags['f']), width // int(final_flags['f'])]
-                            samples_ddim, _ = self.sampler.sample(S=int(final_flags['ddim_steps']),
-                                                            conditioning=c,
-                                                            batch_size=int(self.default_flags['n_samples']),
-                                                            shape=shape,
-                                                            verbose=False,
-                                                            unconditional_guidance_scale=float(final_flags['scale']),
-                                                            unconditional_conditioning=uc,
-                                                            eta=float(final_flags['ddim_eta']),
-                                                            x_T=None)
+        precision_scope = autocast if final_flags['precision']=="autocast" else nullcontext
+        with torch.no_grad():
+            with precision_scope("cuda"):
+                with self.model.ema_scope():
+                    tic = time.time()
+                    for n in trange(1, desc="Sampling"):
+                        uc = self.model.get_learned_conditioning(batch_size * ["oil painting"])
+                        if float(final_flags['scale']) != 1.0:
+                            uc = self.model.get_learned_conditioning(batch_size * [""])
+                        #if isinstance(prompts, tuple):
+                        #    prompts = list(prompts)
+                        c = torch.zeros_like(uc)
+                        for p in self.parse_prompt(prompts):
+                            c = torch.add(c, self.model.get_learned_conditioning(p[0]), alpha=p[1])
+                        #c = self.model.get_learned_conditioning(prompts)
+                        shape = [int(final_flags['c']), height // int(final_flags['f']), width // int(final_flags['f'])]
+                        samples_ddim, _ = self.sampler.sample(S=int(final_flags['ddim_steps']),
+                                                        conditioning=c,
+                                                        batch_size=int(self.default_flags['n_samples']),
+                                                        shape=shape,
+                                                        verbose=False,
+                                                        unconditional_guidance_scale=float(final_flags['scale']),
+                                                        unconditional_conditioning=uc,
+                                                        eta=float(final_flags['ddim_eta']),
+                                                        x_T=None)
 
-                            x_samples_ddim = self.model.decode_first_stage(samples_ddim)
-                            x_sample = torch.clamp((x_samples_ddim + 1.0) / 2.0, min=0.0, max=1.0)[0]
+                        x_samples_ddim = self.model.decode_first_stage(samples_ddim)
+                        x_sample = torch.clamp((x_samples_ddim + 1.0) / 2.0, min=0.0, max=1.0)[0]
 
-                            x_sample = 255. * rearrange(x_sample.cpu().numpy(), 'c h w -> h w c')
-                            result=Image.fromarray(x_sample.astype(np.uint8))
+                        x_sample = 255. * rearrange(x_sample.cpu().numpy(), 'c h w -> h w c')
+                        result=Image.fromarray(x_sample.astype(np.uint8))
 
-                            if tooBig<0:
-                                result = result.resize((int(final_flags['w']), int(final_flags['h'])), Image.LANCZOS)
+                        if tooBig<0:
+                            result = result.resize((int(final_flags['w']), int(final_flags['h'])), Image.LANCZOS)
 
-                            if tooBig>0:
-                                result = self.processRealESRGAN(result).resize((int(final_flags['w']), int(final_flags['h'])), Image.LANCZOS)
+                        if tooBig>0:
+                            result = self.processRealESRGAN(result).resize((int(final_flags['w']), int(final_flags['h'])), Image.LANCZOS)
 
-                            self.generation_lock.release()
-                            return result, final_flags
+                        self.generation_lock.release()
+                        return result, final_flags
