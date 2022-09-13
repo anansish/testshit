@@ -254,5 +254,5 @@ class DDIMSampler(object):
                                           unconditional_guidance_scale=unconditional_guidance_scale,
                                           unconditional_conditioning=unconditional_conditioning)
             self.image_stage = x_dec
-            self.progress_percent = int(i/total_steps)
+            self.progress_percent = int(i/total_steps*100)
         return x_dec
