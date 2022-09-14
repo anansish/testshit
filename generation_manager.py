@@ -239,6 +239,9 @@ class Generator():
         if visual and self.current_generation_info['tooBig'] > 0 and progress < 100:
             result = result.resize((self.current_generation_info['w'], self.current_generation_info['h']), Image.LANCZOS)
         if progress==100:
+            self.sampler.image_stage=None
+            self.sampler.progress_percent=0
+
             if self.current_generation_info['tooBig'] > 0:
                 result = self.processRealESRGAN(result).resize((self.current_generation_info['w'], self.current_generation_info['h']), Image.LANCZOS)
             if self.current_generation_info['mode']=='inpaint':
