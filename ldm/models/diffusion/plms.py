@@ -84,6 +84,8 @@ class PLMSSampler(object):
                # this has to come in the same format as the conditioning, # e.g. as encoded tokens, ...
                **kwargs
                ):
+        self.image_stage=None
+        self.progress_percent=0
         if conditioning is not None:
             if isinstance(conditioning, dict):
                 cbs = conditioning[list(conditioning.keys())[0]].shape[0]

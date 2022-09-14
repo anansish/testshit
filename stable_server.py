@@ -72,6 +72,6 @@ def txt2img():
     return "OK"
 
 generator=Generator()
-generator.load_model()
+generator.load_models()
 
 app.run(host="0.0.0.0")

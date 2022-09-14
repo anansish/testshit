@@ -41,6 +41,8 @@ class Generator():
                'n_samples':1}
     model=None
     sampler=None
+    samplers=[]
+    RealESRGAN=None
     device=None
 
     def __init__(self):
@@ -69,13 +71,17 @@ class Generator():
         model.eval()
         return model
 
-    def load_model(self):
+    def load_models(self):
         self.generation_lock.acquire()
         config = OmegaConf.load(self.default_flags['config'])
         self.model = self.load_model_from_config(config, f"{self.default_flags['ckpt']}")
 
         self.device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
         self.model = self.model.to(self.device)
+
+        self.samplers.append(PLMSSampler(self.model))
+        self.samplers.append(DDIMSampler(self.model))
+        self.RealESRGAN = self.load_RealESRGAN("RealESRGAN_x4plus")
 
         self.generation_lock.release()
 
@@ -132,8 +138,7 @@ class Generator():
 
     def processRealESRGAN(self, image):
         image = image.convert("RGB")
-        RealESRGAN = self.load_RealESRGAN("RealESRGAN_x4plus")
-        result, res = RealESRGAN.enhance(np.array(image, dtype=np.uint8))
+        result, res = self.RealESRGAN.enhance(np.array(image, dtype=np.uint8))
         result = Image.fromarray(result)
         return result
 
@@ -243,7 +248,7 @@ class Generator():
 
     def img2imgInpainting(self, flags, image_data):
         self.generation_lock.acquire()
-        self.sampler = DDIMSampler(self.model)
+        self.sampler = self.samplers[1]
         final_flags=self.default_flags.copy()
         final_flags.update(flags)
 
@@ -309,7 +314,7 @@ class Generator():
 
     def img2img(self, flags, image_data):
         self.generation_lock.acquire()
-        self.sampler = DDIMSampler(self.model)
+        self.sampler = self.samplers[1]
         final_flags=self.default_flags.copy()
         final_flags.update(flags)
 
@@ -370,7 +375,7 @@ class Generator():
 
     def generate(self, flags):
         self.generation_lock.acquire()
-        self.sampler = PLMSSampler(self.model)
+        self.sampler = self.samplers[0]
         final_flags=self.default_flags.copy()
         final_flags.update(flags)
 
