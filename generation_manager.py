@@ -246,7 +246,7 @@ class Generator():
                 result = self.processRealESRGAN(result).resize((self.current_generation_info['w'], self.current_generation_info['h']), Image.LANCZOS)
             if self.current_generation_info['mode']=='inpaint':
                 result = Image.composite(self.current_generation_info['orig_image'], result, self.current_generation_info['orig_image'].getchannel("A"))
-
+            torch.cuda.empty_cache()
         return result, progress
 
     def img2imgInpainting(self, flags, image_data):
