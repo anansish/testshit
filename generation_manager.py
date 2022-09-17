@@ -22,6 +22,8 @@ from ldm.util import instantiate_from_config
 from ldm.models.diffusion.ddim import DDIMSampler
 from ldm.models.diffusion.plms import PLMSSampler
 
+MAX_SIZE_IN_PIXELS=300000
+
 class Generator():
     current_generation_info={}
     generation_lock = threading.Lock()
@@ -145,7 +147,7 @@ class Generator():
     def load_img(self, data):
         image = Image.fromqimage(data)
 
-        image=image.convert("RGB") #Image.open(io.BytesIO(data)).convert("RGB")
+        image=image.convert("RGB")
 
         init_width, init_height = image.size
         width, height, tooBig = self.check_and_resize(init_width, init_height)
@@ -175,11 +177,6 @@ class Generator():
             image = image.resize((width, height), Image.LANCZOS)
 
         mask_channel = test.getchannel("A")
-        #mask_channel = np.array(mask_channel)
-        #mask_channel[mask_channel >= 255] = 255.0
-        #mask_channel[mask_channel < 255] = 0.0
-
-        #mask_channel = Image.fromarray(mask_channel).filter(ImageFilter.GaussianBlur(2))
 
         mask = np.array(mask_channel).astype(np.float32) / 255.0
         mask = (1 - mask)
@@ -217,7 +214,7 @@ class Generator():
 
     def check_and_resize(self, w, h):
         print(f"old size {w}x{h}")
-        neww,newh=self.calculate_max_dimensions(400000, w, h)
+        neww,newh=self.calculate_max_dimensions(MAX_SIZE_IN_PIXELS, w, h)
         if neww*newh>w*h:
             return neww, newh, -1
         if neww*newh<w*h:
@@ -299,19 +296,7 @@ class Generator():
                         # decode it
                         samples = self.sampler.decode(z_enc, c, t_enc, unconditional_guidance_scale=float(final_flags['scale']),
                                                 unconditional_conditioning=uc, z_mask=mask, x0=init_latent)
-                        '''
-                        x_samples_ddim = self.model.decode_first_stage(samples)
-                        x_sample = torch.clamp((x_samples_ddim + 1.0) / 2.0, min=0.0, max=1.0)[0]
 
-                        x_sample = 255. * rearrange(x_sample.cpu().numpy(), 'c h w -> h w c')
-                        result=Image.fromarray(x_sample.astype(np.uint8))
-
-                        if tooBig < 0:
-                            result = result.resize((init_width, init_height), Image.LANCZOS)
-                        if tooBig > 0:
-                            result = self.processRealESRGAN(result).resize((init_width, init_height), Image.LANCZOS)
-                        result = Image.composite(orig_image,result, orig_image.getchannel("A"))
-                        '''
                         self.generation_lock.release()
                         return final_flags #result, final_flags
 
@@ -360,18 +345,7 @@ class Generator():
                         # decode it
                         samples = self.sampler.decode(z_enc, c, t_enc, unconditional_guidance_scale=float(final_flags['scale']),
                                                 unconditional_conditioning=uc,)
-                        '''
-                        x_samples_ddim = self.model.decode_first_stage(samples)
-                        x_sample = torch.clamp((x_samples_ddim + 1.0) / 2.0, min=0.0, max=1.0)[0]
 
-                        x_sample = 255. * rearrange(x_sample.cpu().numpy(), 'c h w -> h w c')
-                        result=Image.fromarray(x_sample.astype(np.uint8))
-
-                        if tooBig < 0:
-                            result = result.resize((init_width, init_height), Image.LANCZOS)
-                        if tooBig > 0:
-                            result = self.processRealESRGAN(result).resize((init_width, init_height), Image.LANCZOS)
-                        '''
                         self.generation_lock.release()
                         return final_flags #result, final_flags
 
@@ -401,12 +375,11 @@ class Generator():
                         uc = self.model.get_learned_conditioning(batch_size * ["oil painting"])
                         if float(final_flags['scale']) != 1.0:
                             uc = self.model.get_learned_conditioning(batch_size * [""])
-                        #if isinstance(prompts, tuple):
-                        #    prompts = list(prompts)
+
                         c = torch.zeros_like(uc)
                         for p in self.parse_prompt(prompts):
                             c = torch.add(c, self.model.get_learned_conditioning(p[0]), alpha=p[1])
-                        #c = self.model.get_learned_conditioning(prompts)
+
                         shape = [int(final_flags['c']), height // int(final_flags['f']), width // int(final_flags['f'])]
                         samples_ddim, _ = self.sampler.sample(S=int(final_flags['ddim_steps']),
                                                         conditioning=c,
@@ -417,18 +390,6 @@ class Generator():
                                                         unconditional_conditioning=uc,
                                                         eta=float(final_flags['ddim_eta']),
                                                         x_T=None)
-                        '''
-                        x_samples_ddim = self.model.decode_first_stage(samples_ddim)
-                        x_sample = torch.clamp((x_samples_ddim + 1.0) / 2.0, min=0.0, max=1.0)[0]
 
-                        x_sample = 255. * rearrange(x_sample.cpu().numpy(), 'c h w -> h w c')
-                        result=Image.fromarray(x_sample.astype(np.uint8))
-
-                        if tooBig<0:
-                            result = result.resize((int(final_flags['w']), int(final_flags['h'])), Image.LANCZOS)
-
-                        if tooBig>0:
-                            result = self.processRealESRGAN(result).resize((int(final_flags['w']), int(final_flags['h'])), Image.LANCZOS)
-                        '''
                         self.generation_lock.release()
                         return final_flags #result, final_flags
