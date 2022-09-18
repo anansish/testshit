@@ -22,7 +22,7 @@ from ldm.util import instantiate_from_config
 from ldm.models.diffusion.ddim import DDIMSampler
 from ldm.models.diffusion.plms import PLMSSampler
 
-MAX_SIZE_IN_PIXELS=300000
+MAX_SIZE_IN_PIXELS=201000
 
 class Generator():
     current_generation_info={}
@@ -372,7 +372,7 @@ class Generator():
                 with self.model.ema_scope():
                     tic = time.time()
                     for n in trange(1, desc="Sampling"):
-                        uc = self.model.get_learned_conditioning(batch_size * ["oil painting"])
+                        uc = None
                         if float(final_flags['scale']) != 1.0:
                             uc = self.model.get_learned_conditioning(batch_size * [""])
 
